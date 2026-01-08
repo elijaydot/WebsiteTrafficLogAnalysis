@@ -66,17 +66,23 @@ def transform_data(df):
         # Copy to avoid SettingWithCopy warnings
         df = df.copy()
         
+        # Map 'minute' to 'timestamp' if present (handling aggregated datasets)
+        if 'minute' in df.columns:
+            df = df.rename(columns={'minute': 'timestamp'})
+
         # Convert timestamp
-        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-        
-        # Drop rows with invalid timestamps
-        df = df.dropna(subset=['timestamp'])
-        
-        # Extract features
-        df['hour_of_day'] = df['timestamp'].dt.hour
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+            
+            # Drop rows with invalid timestamps
+            df = df.dropna(subset=['timestamp'])
+            
+            # Extract features
+            df['hour_of_day'] = df['timestamp'].dt.hour
         
         # Ensure status_code is int
-        df['status_code'] = pd.to_numeric(df['status_code'], errors='coerce').fillna(0).astype(int)
+        if 'status_code' in df.columns:
+            df['status_code'] = pd.to_numeric(df['status_code'], errors='coerce').fillna(0).astype(int)
         
         # Clean data_size (replace '-' with 0 and convert to numeric)
         if 'data_size' in df.columns:
@@ -147,9 +153,15 @@ if df_raw is not None:
         col1, col2, col3, col4 = st.columns(4)
         
         total_requests = len(df_clean)
-        unique_visitors = df_clean['ip_address'].nunique()
-        error_requests = df_clean[df_clean['status_code'] >= 400]
-        error_rate = (len(error_requests) / total_requests) * 100 if total_requests > 0 else 0
+        if 'count' in df_clean.columns:
+             total_requests = df_clean['count'].sum()
+
+        unique_visitors = df_clean['ip_address'].nunique() if 'ip_address' in df_clean.columns else 0
+        
+        error_rate = 0
+        if 'status_code' in df_clean.columns:
+            error_requests = df_clean[df_clean['status_code'] >= 400]
+            error_rate = (len(error_requests) / len(df_clean)) * 100 if len(df_clean) > 0 else 0
         
         # Calculate total data transfer if available
         if 'data_size' in df_clean.columns:
@@ -158,7 +170,7 @@ if df_raw is not None:
             total_data_gb = 0
         
         col1.metric("Total Requests", total_requests)
-        col2.metric("Unique Visitors", unique_visitors)
+        col2.metric("Unique Visitors", unique_visitors if unique_visitors > 0 else "N/A")
         col3.metric("Error Rate", f"{error_rate:.2f}%")
         col4.metric("Data Transferred", f"{total_data_gb:.2f} GB")
         
@@ -167,13 +179,20 @@ if df_raw is not None:
         
         with col_chart1:
             st.subheader("Traffic by Hour")
-            hourly_traffic = df_clean['hour_of_day'].value_counts().sort_index()
-            st.bar_chart(hourly_traffic)
+            if 'hour_of_day' in df_clean.columns:
+                if 'count' in df_clean.columns:
+                    hourly_traffic = df_clean.groupby('hour_of_day')['count'].sum().sort_index()
+                else:
+                    hourly_traffic = df_clean['hour_of_day'].value_counts().sort_index()
+                st.bar_chart(hourly_traffic)
             
         with col_chart2:
             st.subheader("Top 5 Pages")
-            top_pages = df_clean['page_visited'].value_counts().head(5)
-            st.bar_chart(top_pages)
+            if 'page_visited' in df_clean.columns:
+                top_pages = df_clean['page_visited'].value_counts().head(5)
+                st.bar_chart(top_pages)
+            else:
+                st.info("Page information not available.")
             
         # New Analysis Sections
         col_chart3, col_chart4 = st.columns(2)
@@ -181,13 +200,19 @@ if df_raw is not None:
         with col_chart3:
             st.subheader("Daily Traffic Trend")
             if 'timestamp' in df_clean.columns:
-                daily_traffic = df_clean.set_index('timestamp').resample('D').size()
+                if 'count' in df_clean.columns:
+                    daily_traffic = df_clean.set_index('timestamp').resample('D')['count'].sum()
+                else:
+                    daily_traffic = df_clean.set_index('timestamp').resample('D').size()
                 st.line_chart(daily_traffic)
 
         with col_chart4:
             st.subheader("Top 404 Errors (Missing Pages)")
-            missing_pages = df_clean[df_clean['status_code'] == 404]['page_visited'].value_counts().head(5)
-            st.bar_chart(missing_pages)
+            if 'status_code' in df_clean.columns and 'page_visited' in df_clean.columns:
+                missing_pages = df_clean[df_clean['status_code'] == 404]['page_visited'].value_counts().head(5)
+                st.bar_chart(missing_pages)
+            else:
+                st.info("404 Error analysis not available.")
 
         # Referer Analysis
         st.subheader("Top Referrers")
@@ -217,8 +242,11 @@ if df_raw is not None:
                 st.info("No image requests detected.")
 
         st.subheader("HTTP Status Code Distribution")
-        status_counts = df_clean['status_code'].value_counts()
-        st.bar_chart(status_counts)
+        if 'status_code' in df_clean.columns:
+            status_counts = df_clean['status_code'].value_counts()
+            st.bar_chart(status_counts)
+        else:
+            st.info("Status code information not available.")
 
         # Detailed Data View
         with st.expander("View Detailed Data"):
