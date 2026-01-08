@@ -123,20 +123,25 @@ def transform_data(df):
 
         # Parse User Agent for Browser
         if 'user_agent' in df.columns:
-            def parse_browser(ua):
-                ua = str(ua).lower()
-                if 'chrome' in ua: return 'Chrome'
-                elif 'firefox' in ua: return 'Firefox'
-                elif 'safari' in ua: return 'Safari'
-                elif 'edge' in ua: return 'Edge'
-                elif 'bot' in ua or 'crawl' in ua: return 'Bot'
-                else: return 'Other'
-            df['browser'] = df['user_agent'].apply(parse_browser)
+            # Optimize: Use vectorized string operations instead of apply() for performance
+            ua = df['user_agent'].astype(str).str.lower()
+            df['browser'] = 'Other'
+            
+            df.loc[ua.str.contains('safari'), 'browser'] = 'Safari'
+            df.loc[ua.str.contains('firefox'), 'browser'] = 'Firefox'
+            df.loc[ua.str.contains('chrome'), 'browser'] = 'Chrome'
+            df.loc[ua.str.contains('edge'), 'browser'] = 'Edge'
+            df.loc[ua.str.contains('bot|crawl', regex=True), 'browser'] = 'Bot'
 
         return df
     except Exception as e:
         st.error(f"Error during transformation: {e}")
         return None
+
+@st.cache_data
+def convert_df(df):
+    # Cache the conversion to prevent reloading on every interaction
+    return df.to_csv(index=False).encode('utf-8')
 
 # --- Sidebar / Input ---
 
@@ -165,7 +170,8 @@ else:
     st.toast("File upload detected. Starting processing...", icon="⏳")
     df_raw = load_data(uploaded_file)
     if df_raw is not None:
-        st.success("Data upload completed")
+        # st.success("Data upload completed")
+        st.toast("Analysis completed!", icon="✅")
 
 # --- Main Execution ---
 
@@ -175,7 +181,7 @@ if df_raw is not None:
     
     if df_clean is not None:
         st.toast("Analysis completed!", icon="✅")
-        st.success("Analysis completed")
+        # st.success("Analysis completed")
         # --- Date Filter ---
         st.sidebar.header("Filters")
         
@@ -372,7 +378,7 @@ if df_raw is not None:
             
             # Load (Download)
             st.subheader("Export Data")
-            csv = df_clean.to_csv(index=False).encode('utf-8')
+            csv = convert_df(df_clean)
             st.download_button(
                 label="Download Processed CSV",
                 data=csv,
