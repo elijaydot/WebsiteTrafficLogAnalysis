@@ -31,9 +31,15 @@ def load_data(file):
             # Handle Real-world Logs (Apache/Nginx Combined Format)
             # Format: IP - - [Date] "Method Path Protocol" Status Size "Referer" "UserAgent"
             elif file.name.endswith('.log') or file.name.endswith('.txt'):
-                # Use errors='replace' to handle encoding issues (common in older server logs)
-                content = file.getvalue().decode("utf-8", errors="replace")
+                # Optimize: Read file line by line to avoid loading entire content into memory
+                file.seek(0)
                 
+                # Progress Bar Setup
+                progress_text = "Parsing log file... Please wait."
+                my_bar = st.progress(0, text=progress_text)
+                total_size = file.size if file.size > 0 else 1
+                bytes_processed = 0
+
                 # Regex to extract fields (Supports Combined and Common Log Format)
                 # Made Referer and User Agent optional to support NASA CLF logs
                 log_pattern = re.compile(
@@ -41,7 +47,17 @@ def load_data(file):
                 )
                 
                 data = []
-                for line in content.splitlines():
+                # Use TextIOWrapper to decode stream on the fly without loading full file to RAM
+                # We don't use 'with' to avoid closing the underlying Streamlit file object
+                text_stream = io.TextIOWrapper(file, encoding='utf-8', errors='replace')
+                
+                for i, line in enumerate(text_stream):
+                    # Update progress bar
+                    bytes_processed += len(line.encode('utf-8'))
+                    if i % 5000 == 0:
+                        progress = min(bytes_processed / total_size, 1.0)
+                        my_bar.progress(progress, text=f"{progress_text} {int(progress*100)}%")
+
                     match = log_pattern.search(line)
                     if match:
                         row = match.groupdict()
@@ -49,6 +65,10 @@ def load_data(file):
                         # From: 10/Oct/2000:13:55:36 +0000 -> 10/Oct/2000 13:55:36 +0000
                         row['timestamp'] = row['timestamp'].replace(':', ' ', 1)
                         data.append(row)
+                
+                # Detach wrapper so it doesn't close the underlying file when garbage collected
+                text_stream.detach()
+                my_bar.empty()
                 
                 if data:
                     return pd.DataFrame(data)
@@ -207,12 +227,13 @@ if df_raw is not None:
                         hourly_data = df_clean['hour_of_day'].value_counts().reset_index()
                         hourly_data.columns = ['hour_of_day', 'count']
                     
-                    chart = alt.Chart(hourly_data).mark_bar(color='#4c78a8').encode(
-                        x=alt.X('hour_of_day', title='Hour of Day'),
-                        y=alt.Y('count', title='Request Count'),
-                        tooltip=['hour_of_day', 'count']
-                    ).interactive()
-                    st.altair_chart(chart, use_container_width=True)
+                    if not hourly_data.empty:
+                        chart = alt.Chart(hourly_data).mark_bar(color='#4c78a8').encode(
+                            x=alt.X('hour_of_day', title='Hour of Day'),
+                            y=alt.Y('count', title='Request Count'),
+                            tooltip=['hour_of_day', 'count']
+                        ).interactive()
+                        st.altair_chart(chart, use_container_width=True)
                 
             with col_chart2:
                 st.subheader("Top 5 Pages")
@@ -233,12 +254,13 @@ if df_raw is not None:
                     else:
                         daily_data = df_clean.set_index('timestamp').resample('D').size().reset_index(name='count')
                     
-                    chart = alt.Chart(daily_data).mark_line(color='#55a868').encode(
-                        x=alt.X('timestamp', title='Date'),
-                        y=alt.Y('count', title='Requests'),
-                        tooltip=['timestamp', 'count']
-                    ).interactive()
-                    st.altair_chart(chart, use_container_width=True)
+                    if not daily_data.empty:
+                        chart = alt.Chart(daily_data).mark_line(color='#55a868').encode(
+                            x=alt.X('timestamp', title='Date'),
+                            y=alt.Y('count', title='Requests'),
+                            tooltip=['timestamp', 'count']
+                        ).interactive()
+                        st.altair_chart(chart, use_container_width=True)
 
             with col_chart4:
                 st.subheader("Top 404 Errors (Missing Pages)")
@@ -264,13 +286,14 @@ if df_raw is not None:
                     # Sort days correctly
                     days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
                     
-                    chart = alt.Chart(heatmap_data).mark_rect().encode(
-                        x=alt.X('hour_of_day:O', title='Hour'),
-                        y=alt.Y('day_of_week:O', title='Day', sort=days_order),
-                        color=alt.Color('count:Q', scale=alt.Scale(scheme='viridis'), title='Requests'),
-                        tooltip=['day_of_week', 'hour_of_day', 'count']
-                    ).properties(height=300)
-                    st.altair_chart(chart, use_container_width=True)
+                    if not heatmap_data.empty:
+                        chart = alt.Chart(heatmap_data).mark_rect().encode(
+                            x=alt.X('hour_of_day:O', title='Hour'),
+                            y=alt.Y('day_of_week:O', title='Day', sort=days_order),
+                            color=alt.Color('count:Q', scale=alt.Scale(scheme='viridis'), title='Requests'),
+                            tooltip=['day_of_week', 'hour_of_day', 'count']
+                        ).properties(height=300)
+                        st.altair_chart(chart, use_container_width=True)
                 else:
                     st.info("Timestamp data required for heatmap.")
 
@@ -280,12 +303,13 @@ if df_raw is not None:
                     browser_data = df_clean['browser'].value_counts().reset_index()
                     browser_data.columns = ['browser', 'count']
                     
-                    chart = alt.Chart(browser_data).mark_arc(innerRadius=60).encode(
-                        theta=alt.Theta(field="count", type="quantitative"),
-                        color=alt.Color(field="browser", type="nominal", scale=alt.Scale(scheme='category10')),
-                        tooltip=['browser', 'count']
-                    ).properties(height=300)
-                    st.altair_chart(chart, use_container_width=True)
+                    if not browser_data.empty:
+                        chart = alt.Chart(browser_data).mark_arc(innerRadius=60).encode(
+                            theta=alt.Theta(field="count", type="quantitative"),
+                            color=alt.Color(field="browser", type="nominal", scale=alt.Scale(scheme='category10')),
+                            tooltip=['browser', 'count']
+                        ).properties(height=300)
+                        st.altair_chart(chart, use_container_width=True)
                 else:
                     st.info("User Agent data required for browser analysis.")
 

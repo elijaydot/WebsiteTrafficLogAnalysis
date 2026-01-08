@@ -2,7 +2,7 @@
 
 A robust Data Engineering project that demonstrates **ETL (Extract, Transform, Load)** processes on website traffic logs. This project includes a Jupyter Notebook for educational walkthroughs and a live interactive **Streamlit** dashboard for real-time log analysis.
 
-## 🚀 Features
+## Features
 
 *   **Multi-Format Support**: Upload standard **CSV** files or raw **Apache/Nginx Access Logs** (`.log`, `.txt`).
 *   **Automated ETL Pipeline**:
@@ -20,13 +20,13 @@ A robust Data Engineering project that demonstrates **ETL (Extract, Transform, L
     *   **File Statistics**: View row and column counts immediately after upload.
     *   **Dynamic Analysis Report**: Automatically generates a summary explaining which analyses were performed based on the detected columns (e.g., "Detected `status_code`, so Error Rate analysis was performed").
 
-## 📂 Project Structure
+## Project Structure
 
 *   `app.py`: The main entry point for the Streamlit web application. Contains the logic for the dashboard and log parsing.
 *   `website_traffic_analysis.ipynb`: A Jupyter Notebook serving as a prototyping environment. It breaks down the logic step-by-step for learning purposes.
 *   `requirements.txt`: List of Python dependencies required to run the project.
 
-## 🛠️ Installation
+## Installation
 
 1.  **Prerequisites**: Ensure you have Python 3.7+ installed.
 
@@ -36,7 +36,7 @@ A robust Data Engineering project that demonstrates **ETL (Extract, Transform, L
     pip install -r requirements.txt
     ```
 
-## 📊 Usage
+## Usage
 
 ### Running the Web Application
 To launch the interactive dashboard:
@@ -55,7 +55,7 @@ To explore the code logic and step-by-step analysis:
     ```
 2.  Run the cells sequentially to see how data is loaded, cleaned, and analyzed.
 
-## 📝 Data Format Support
+## Data Format Support
 
 ### 1. CSV Format
 If uploading a CSV, it should contain the following headers:
@@ -68,13 +68,13 @@ Example:
 127.0.0.1 - - [10/Oct/2023:13:55:36 +0000] "GET /home HTTP/1.1" 200 2326 "http://google.com" "Mozilla/5.0..."
 ```
 
-## 🔍 Analysis Breakdown
+## Analysis Breakdown
 
 1.  **Unique Visitors**: Counted based on unique IP addresses.
 2.  **Error Rate**: Percentage of requests returning 4xx or 5xx status codes.
 3.  **Hotlinking**: Identifies external domains (Referers) requesting image files (png, jpg, etc.) from your server.
 4.  **Bandwidth**: Sums up the size of data transferred in responses.
 
-## 📜 License
+## License
 
 This project is open-source and available for educational purposes.
