@@ -30,11 +30,13 @@ def load_data(file):
             # Handle Real-world Logs (Apache/Nginx Combined Format)
             # Format: IP - - [Date] "Method Path Protocol" Status Size "Referer" "UserAgent"
             elif file.name.endswith('.log') or file.name.endswith('.txt'):
-                content = file.getvalue().decode("utf-8")
+                # Use errors='replace' to handle encoding issues (common in older server logs)
+                content = file.getvalue().decode("utf-8", errors="replace")
                 
-                # Regex to extract fields
+                # Regex to extract fields (Supports Combined and Common Log Format)
+                # Made Referer and User Agent optional to support NASA CLF logs
                 log_pattern = re.compile(
-                    r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "\S+ (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) \S+ ".*?" "(?P<user_agent>.*?)"'
+                    r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "\S+ (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) \S+(?: ".*?" "(?P<user_agent>.*?)")?'
                 )
                 
                 data = []
