@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import re
+import altair as alt
 
 # Page Configuration
 st.set_page_config(
@@ -92,6 +93,22 @@ def transform_data(df):
         if 'referer' in df.columns:
             df['referer'] = df['referer'].fillna('-')
         
+        # Extract Day of Week
+        if 'timestamp' in df.columns:
+            df['day_of_week'] = df['timestamp'].dt.day_name()
+
+        # Parse User Agent for Browser
+        if 'user_agent' in df.columns:
+            def parse_browser(ua):
+                ua = str(ua).lower()
+                if 'chrome' in ua: return 'Chrome'
+                elif 'firefox' in ua: return 'Firefox'
+                elif 'safari' in ua: return 'Safari'
+                elif 'edge' in ua: return 'Edge'
+                elif 'bot' in ua or 'crawl' in ua: return 'Bot'
+                else: return 'Other'
+            df['browser'] = df['user_agent'].apply(parse_browser)
+
         return df
     except Exception as e:
         st.error(f"Error during transformation: {e}")
@@ -183,11 +200,19 @@ if df_raw is not None:
             with col_chart1:
                 st.subheader("Traffic by Hour")
                 if 'hour_of_day' in df_clean.columns:
+                    # Prepare data for Altair
                     if 'count' in df_clean.columns:
-                        hourly_traffic = df_clean.groupby('hour_of_day')['count'].sum().sort_index()
+                        hourly_data = df_clean.groupby('hour_of_day')['count'].sum().reset_index()
                     else:
-                        hourly_traffic = df_clean['hour_of_day'].value_counts().sort_index()
-                    st.bar_chart(hourly_traffic)
+                        hourly_data = df_clean['hour_of_day'].value_counts().reset_index()
+                        hourly_data.columns = ['hour_of_day', 'count']
+                    
+                    chart = alt.Chart(hourly_data).mark_bar(color='#4c78a8').encode(
+                        x=alt.X('hour_of_day', title='Hour of Day'),
+                        y=alt.Y('count', title='Request Count'),
+                        tooltip=['hour_of_day', 'count']
+                    ).interactive()
+                    st.altair_chart(chart, use_container_width=True)
                 
             with col_chart2:
                 st.subheader("Top 5 Pages")
@@ -204,10 +229,16 @@ if df_raw is not None:
                 st.subheader("Daily Traffic Trend")
                 if 'timestamp' in df_clean.columns:
                     if 'count' in df_clean.columns:
-                        daily_traffic = df_clean.set_index('timestamp').resample('D')['count'].sum()
+                        daily_data = df_clean.set_index('timestamp').resample('D')['count'].sum().reset_index()
                     else:
-                        daily_traffic = df_clean.set_index('timestamp').resample('D').size()
-                    st.line_chart(daily_traffic)
+                        daily_data = df_clean.set_index('timestamp').resample('D').size().reset_index(name='count')
+                    
+                    chart = alt.Chart(daily_data).mark_line(color='#55a868').encode(
+                        x=alt.X('timestamp', title='Date'),
+                        y=alt.Y('count', title='Requests'),
+                        tooltip=['timestamp', 'count']
+                    ).interactive()
+                    st.altair_chart(chart, use_container_width=True)
 
             with col_chart4:
                 st.subheader("Top 404 Errors (Missing Pages)")
@@ -216,6 +247,47 @@ if df_raw is not None:
                     st.bar_chart(missing_pages)
                 else:
                     st.info("404 Error analysis not available.")
+
+            # --- Advanced Insights (New Charts) ---
+            st.markdown("---")
+            st.subheader("🔍 Advanced Insights")
+            col_adv1, col_adv2 = st.columns(2)
+
+            with col_adv1:
+                st.markdown("**Weekly Activity Heatmap**")
+                if 'day_of_week' in df_clean.columns and 'hour_of_day' in df_clean.columns:
+                    if 'count' in df_clean.columns:
+                        heatmap_data = df_clean.groupby(['day_of_week', 'hour_of_day'])['count'].sum().reset_index()
+                    else:
+                        heatmap_data = df_clean.groupby(['day_of_week', 'hour_of_day']).size().reset_index(name='count')
+                    
+                    # Sort days correctly
+                    days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                    
+                    chart = alt.Chart(heatmap_data).mark_rect().encode(
+                        x=alt.X('hour_of_day:O', title='Hour'),
+                        y=alt.Y('day_of_week:O', title='Day', sort=days_order),
+                        color=alt.Color('count:Q', scale=alt.Scale(scheme='viridis'), title='Requests'),
+                        tooltip=['day_of_week', 'hour_of_day', 'count']
+                    ).properties(height=300)
+                    st.altair_chart(chart, use_container_width=True)
+                else:
+                    st.info("Timestamp data required for heatmap.")
+
+            with col_adv2:
+                st.markdown("**Browser Distribution**")
+                if 'browser' in df_clean.columns:
+                    browser_data = df_clean['browser'].value_counts().reset_index()
+                    browser_data.columns = ['browser', 'count']
+                    
+                    chart = alt.Chart(browser_data).mark_arc(innerRadius=60).encode(
+                        theta=alt.Theta(field="count", type="quantitative"),
+                        color=alt.Color(field="browser", type="nominal", scale=alt.Scale(scheme='category10')),
+                        tooltip=['browser', 'count']
+                    ).properties(height=300)
+                    st.altair_chart(chart, use_container_width=True)
+                else:
+                    st.info("User Agent data required for browser analysis.")
 
             # Referer Analysis
             st.subheader("Top Referrers")
@@ -296,6 +368,8 @@ if df_raw is not None:
                 analysis_log.append("- **Bandwidth Usage**: Detected `data_size`. Total data transfer volume was calculated.")
             if 'ip_address' in df_clean.columns:
                 analysis_log.append("- **Visitor Tracking**: Detected `ip_address`. Unique visitor counts were established.")
+            if 'user_agent' in df_clean.columns:
+                analysis_log.append("- **User Agent Analysis**: Detected `user_agent`. Browser distribution was visualized.")
             
             for log in analysis_log:
                 st.markdown(log)

@@ -16,6 +16,9 @@ A robust Data Engineering project that demonstrates **ETL (Extract, Transform, L
     *   **Issue Detection**: Spot top 404 (Missing Page) errors.
     *   **Security & Bandwidth**: Detect potential image hotlinking from external domains.
 *   **Filtering**: Filter analysis by specific date ranges.
+*   **Data Overview Tab**:
+    *   **File Statistics**: View row and column counts immediately after upload.
+    *   **Dynamic Analysis Report**: Automatically generates a summary explaining which analyses were performed based on the detected columns (e.g., "Detected `status_code`, so Error Rate analysis was performed").
 
 ## 📂 Project Structure
 
