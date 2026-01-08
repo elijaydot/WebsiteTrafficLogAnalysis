@@ -148,116 +148,157 @@ if df_raw is not None:
 
         # --- Dashboard Layout ---
         
-        # Top Metrics
-        st.subheader("Key Metrics")
-        col1, col2, col3, col4 = st.columns(4)
+        tab1, tab2 = st.tabs(["Dashboard", "Data Overview"])
         
-        total_requests = len(df_clean)
-        if 'count' in df_clean.columns:
-             total_requests = df_clean['count'].sum()
+        with tab1:
+            # Top Metrics
+            st.subheader("Key Metrics")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            total_requests = len(df_clean)
+            if 'count' in df_clean.columns:
+                 total_requests = df_clean['count'].sum()
 
-        unique_visitors = df_clean['ip_address'].nunique() if 'ip_address' in df_clean.columns else 0
-        
-        error_rate = 0
-        if 'status_code' in df_clean.columns:
-            error_requests = df_clean[df_clean['status_code'] >= 400]
-            error_rate = (len(error_requests) / len(df_clean)) * 100 if len(df_clean) > 0 else 0
-        
-        # Calculate total data transfer if available
-        if 'data_size' in df_clean.columns:
-            total_data_gb = df_clean['data_size'].sum() / (1024**3) # Convert bytes to GB
-        else:
-            total_data_gb = 0
-        
-        col1.metric("Total Requests", total_requests)
-        col2.metric("Unique Visitors", unique_visitors if unique_visitors > 0 else "N/A")
-        col3.metric("Error Rate", f"{error_rate:.2f}%")
-        col4.metric("Data Transferred", f"{total_data_gb:.2f} GB")
-        
-        # Visualizations
-        col_chart1, col_chart2 = st.columns(2)
-        
-        with col_chart1:
-            st.subheader("Traffic by Hour")
-            if 'hour_of_day' in df_clean.columns:
-                if 'count' in df_clean.columns:
-                    hourly_traffic = df_clean.groupby('hour_of_day')['count'].sum().sort_index()
-                else:
-                    hourly_traffic = df_clean['hour_of_day'].value_counts().sort_index()
-                st.bar_chart(hourly_traffic)
+            unique_visitors = df_clean['ip_address'].nunique() if 'ip_address' in df_clean.columns else 0
             
-        with col_chart2:
-            st.subheader("Top 5 Pages")
-            if 'page_visited' in df_clean.columns:
-                top_pages = df_clean['page_visited'].value_counts().head(5)
-                st.bar_chart(top_pages)
+            error_rate = 0
+            if 'status_code' in df_clean.columns:
+                error_requests = df_clean[df_clean['status_code'] >= 400]
+                error_rate = (len(error_requests) / len(df_clean)) * 100 if len(df_clean) > 0 else 0
+            
+            # Calculate total data transfer if available
+            if 'data_size' in df_clean.columns:
+                total_data_gb = df_clean['data_size'].sum() / (1024**3) # Convert bytes to GB
             else:
-                st.info("Page information not available.")
+                total_data_gb = 0
             
-        # New Analysis Sections
-        col_chart3, col_chart4 = st.columns(2)
-        
-        with col_chart3:
-            st.subheader("Daily Traffic Trend")
+            col1.metric("Total Requests", total_requests)
+            col2.metric("Unique Visitors", unique_visitors if unique_visitors > 0 else "N/A")
+            col3.metric("Error Rate", f"{error_rate:.2f}%")
+            col4.metric("Data Transferred", f"{total_data_gb:.2f} GB")
+            
+            # Visualizations
+            col_chart1, col_chart2 = st.columns(2)
+            
+            with col_chart1:
+                st.subheader("Traffic by Hour")
+                if 'hour_of_day' in df_clean.columns:
+                    if 'count' in df_clean.columns:
+                        hourly_traffic = df_clean.groupby('hour_of_day')['count'].sum().sort_index()
+                    else:
+                        hourly_traffic = df_clean['hour_of_day'].value_counts().sort_index()
+                    st.bar_chart(hourly_traffic)
+                
+            with col_chart2:
+                st.subheader("Top 5 Pages")
+                if 'page_visited' in df_clean.columns:
+                    top_pages = df_clean['page_visited'].value_counts().head(5)
+                    st.bar_chart(top_pages)
+                else:
+                    st.info("Page information not available.")
+                
+            # New Analysis Sections
+            col_chart3, col_chart4 = st.columns(2)
+            
+            with col_chart3:
+                st.subheader("Daily Traffic Trend")
+                if 'timestamp' in df_clean.columns:
+                    if 'count' in df_clean.columns:
+                        daily_traffic = df_clean.set_index('timestamp').resample('D')['count'].sum()
+                    else:
+                        daily_traffic = df_clean.set_index('timestamp').resample('D').size()
+                    st.line_chart(daily_traffic)
+
+            with col_chart4:
+                st.subheader("Top 404 Errors (Missing Pages)")
+                if 'status_code' in df_clean.columns and 'page_visited' in df_clean.columns:
+                    missing_pages = df_clean[df_clean['status_code'] == 404]['page_visited'].value_counts().head(5)
+                    st.bar_chart(missing_pages)
+                else:
+                    st.info("404 Error analysis not available.")
+
+            # Referer Analysis
+            st.subheader("Top Referrers")
+            if 'referer' in df_clean.columns:
+                # Exclude direct traffic ('-')
+                top_referers = df_clean[df_clean['referer'] != '-']['referer'].value_counts().head(10)
+                st.bar_chart(top_referers)
+
+            # Hotlinking Analysis
+            st.subheader("Potential Hotlinking (Image Requests)")
+            if 'referer' in df_clean.columns:
+                # Identify requests for image files
+                image_extensions = r'\.(?:png|jpg|jpeg|gif|svg|ico|webp)(?:\?|$)'
+                image_requests = df_clean[
+                    df_clean['page_visited'].str.contains(image_extensions, case=False, regex=True)
+                ]
+                
+                if not image_requests.empty:
+                    # Exclude direct traffic ('-') to find potential hotlinkers
+                    hotlink_referers = image_requests[image_requests['referer'] != '-']['referer'].value_counts().head(10)
+                    if not hotlink_referers.empty:
+                        st.bar_chart(hotlink_referers)
+                        st.caption("Domains listed here (other than your own) might be hotlinking your images.")
+                    else:
+                        st.info("No external referers found for image requests.")
+                else:
+                    st.info("No image requests detected.")
+
+            st.subheader("HTTP Status Code Distribution")
+            if 'status_code' in df_clean.columns:
+                status_counts = df_clean['status_code'].value_counts()
+                st.bar_chart(status_counts)
+            else:
+                st.info("Status code information not available.")
+
+            # Detailed Data View
+            with st.expander("View Detailed Data"):
+                st.dataframe(df_clean)
+            
+            # Load (Download)
+            st.subheader("Export Data")
+            csv = df_clean.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download Processed CSV",
+                data=csv,
+                file_name='processed_website_logs.csv',
+                mime='text/csv',
+            )
+
+        with tab2:
+            st.header("📁 Data Overview & Analysis Report")
+            
+            # File Statistics
+            st.subheader("File Statistics")
+            col1, col2 = st.columns(2)
+            col1.info(f"**Rows:** {len(df_clean)}")
+            col2.info(f"**Columns:** {len(df_clean.columns)}")
+            
+            # Column Details
+            st.subheader("Column Structure")
+            dtypes_df = pd.DataFrame(df_clean.dtypes, columns=['Data Type']).astype(str)
+            st.dataframe(dtypes_df)
+            
+            # Analysis Logic Description
+            st.subheader("Analysis Logic Applied")
+            st.markdown("Based on the columns detected in your file, the following analyses were performed:")
+            
+            analysis_log = []
             if 'timestamp' in df_clean.columns:
-                if 'count' in df_clean.columns:
-                    daily_traffic = df_clean.set_index('timestamp').resample('D')['count'].sum()
-                else:
-                    daily_traffic = df_clean.set_index('timestamp').resample('D').size()
-                st.line_chart(daily_traffic)
-
-        with col_chart4:
-            st.subheader("Top 404 Errors (Missing Pages)")
-            if 'status_code' in df_clean.columns and 'page_visited' in df_clean.columns:
-                missing_pages = df_clean[df_clean['status_code'] == 404]['page_visited'].value_counts().head(5)
-                st.bar_chart(missing_pages)
-            else:
-                st.info("404 Error analysis not available.")
-
-        # Referer Analysis
-        st.subheader("Top Referrers")
-        if 'referer' in df_clean.columns:
-            # Exclude direct traffic ('-')
-            top_referers = df_clean[df_clean['referer'] != '-']['referer'].value_counts().head(10)
-            st.bar_chart(top_referers)
-
-        # Hotlinking Analysis
-        st.subheader("Potential Hotlinking (Image Requests)")
-        if 'referer' in df_clean.columns:
-            # Identify requests for image files
-            image_extensions = r'\.(?:png|jpg|jpeg|gif|svg|ico|webp)(?:\?|$)'
-            image_requests = df_clean[
-                df_clean['page_visited'].str.contains(image_extensions, case=False, regex=True)
-            ]
+                analysis_log.append("- **Time Series Analysis**: Detected `timestamp`. Traffic trends over time and by hour of day were calculated.")
+            if 'status_code' in df_clean.columns:
+                analysis_log.append("- **Status Code Distribution**: Detected `status_code`. Success vs. Error rates (4xx/5xx) were analyzed.")
+            if 'page_visited' in df_clean.columns:
+                analysis_log.append("- **Content Popularity**: Detected `page_visited`. Top visited pages and missing pages (404s) were identified.")
+            if 'referer' in df_clean.columns:
+                analysis_log.append("- **Referrer Analysis**: Detected `referer`. Top traffic sources and potential hotlinking were analyzed.")
+            if 'data_size' in df_clean.columns:
+                analysis_log.append("- **Bandwidth Usage**: Detected `data_size`. Total data transfer volume was calculated.")
+            if 'ip_address' in df_clean.columns:
+                analysis_log.append("- **Visitor Tracking**: Detected `ip_address`. Unique visitor counts were established.")
             
-            if not image_requests.empty:
-                # Exclude direct traffic ('-') to find potential hotlinkers
-                hotlink_referers = image_requests[image_requests['referer'] != '-']['referer'].value_counts().head(10)
-                if not hotlink_referers.empty:
-                    st.bar_chart(hotlink_referers)
-                    st.caption("Domains listed here (other than your own) might be hotlinking your images.")
-                else:
-                    st.info("No external referers found for image requests.")
-            else:
-                st.info("No image requests detected.")
-
-        st.subheader("HTTP Status Code Distribution")
-        if 'status_code' in df_clean.columns:
-            status_counts = df_clean['status_code'].value_counts()
-            st.bar_chart(status_counts)
-        else:
-            st.info("Status code information not available.")
-
-        # Detailed Data View
-        with st.expander("View Detailed Data"):
-            st.dataframe(df_clean)
-        
-        # Load (Download)
-        st.subheader("Export Data")
-        csv = df_clean.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download Processed CSV",
-            data=csv,
-            file_name='processed_website_logs.csv',
-            mime='text/csv',
-        )
+            for log in analysis_log:
+                st.markdown(log)
+                
+            if not analysis_log:
+                st.warning("No specific analysis columns detected. Only raw data is available.")
