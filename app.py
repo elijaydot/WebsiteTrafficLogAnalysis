@@ -3,6 +3,8 @@ import pandas as pd
 import io
 import re
 import altair as alt
+import os
+import psutil
 try:
     import vl_convert as vlc
 except ImportError:
@@ -35,47 +37,24 @@ def load_data(file):
             # Handle Real-world Logs (Apache/Nginx Combined Format)
             # Format: IP - - [Date] "Method Path Protocol" Status Size "Referer" "UserAgent"
             elif file.name.endswith('.log') or file.name.endswith('.txt'):
-                # Optimize: Read file line by line to avoid loading entire content into memory
+                # Optimize: Read full content and use vectorized regex (much faster than looping)
                 file.seek(0)
-                
-                # Progress Bar Setup
-                progress_text = "Parsing log file... Please wait."
-                my_bar = st.progress(0, text=progress_text)
-                total_size = file.size if file.size > 0 else 1
-                bytes_processed = 0
+                content = file.getvalue().decode("utf-8", errors="replace")
 
                 # Regex to extract fields (Supports Combined and Common Log Format)
                 # Made Referer and User Agent optional to support NASA CLF logs
-                log_pattern = re.compile(
-                    r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<method>\S+) (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) (?P<data_size>\S+)(?: "(?P<referer>.*?)" "(?P<user_agent>.*?)")?'
-                )
+                log_pattern = r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<method>\S+) (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) (?P<data_size>\S+)(?: "(?P<referer>.*?)" "(?P<user_agent>.*?)")?'
                 
-                data = []
-                # Use TextIOWrapper to decode stream on the fly without loading full file to RAM
-                # We don't use 'with' to avoid closing the underlying Streamlit file object
-                text_stream = io.TextIOWrapper(file, encoding='utf-8', errors='replace')
+                # Load into Series and extract
+                df_raw = pd.Series(content.splitlines())
+                data = df_raw.str.extract(log_pattern)
                 
-                for i, line in enumerate(text_stream):
-                    # Update progress bar
-                    bytes_processed += len(line.encode('utf-8'))
-                    if i % 5000 == 0:
-                        progress = min(bytes_processed / total_size, 1.0)
-                        my_bar.progress(progress, text=f"{progress_text} {int(progress*100)}%")
-
-                    match = log_pattern.search(line)
-                    if match:
-                        row = match.groupdict()
-                        # Fix timestamp format for Pandas (replace first : with space)
-                        # From: 10/Oct/2000:13:55:36 +0000 -> 10/Oct/2000 13:55:36 +0000
-                        row['timestamp'] = row['timestamp'].replace(':', ' ', 1)
-                        data.append(row)
-                
-                # Detach wrapper so it doesn't close the underlying file when garbage collected
-                text_stream.detach()
-                my_bar.empty()
-                
-                if data:
-                    return pd.DataFrame(data)
+                if not data.empty:
+                    # Drop rows that didn't match (all NaNs)
+                    data = data.dropna(how='all')
+                    # Fix timestamp format for Pandas
+                    data['timestamp'] = data['timestamp'].str.replace(':', ' ', n=1)
+                    return data
                 else:
                     st.error("No valid log lines found. Ensure format is Apache/Nginx Combined.")
                     return None
@@ -253,7 +232,7 @@ if df_raw is not None:
                             y=alt.Y('count', title='Request Count'),
                             tooltip=['hour_of_day', 'count']
                         ).interactive()
-                        st.altair_chart(chart, use_container_width=True)
+                        st.altair_chart(chart, width="stretch")
                 
             with col_chart2:
                 st.subheader("Top 5 Pages")
@@ -280,7 +259,7 @@ if df_raw is not None:
                             y=alt.Y('count', title='Requests'),
                             tooltip=['timestamp', 'count']
                         ).interactive()
-                        st.altair_chart(chart, use_container_width=True)
+                        st.altair_chart(chart, width="stretch")
                     
                     # Feature: Download Chart as Image
                     if vlc:
@@ -318,7 +297,7 @@ if df_raw is not None:
                             color=alt.Color('count:Q', scale=alt.Scale(scheme='viridis'), title='Requests'),
                             tooltip=['day_of_week', 'hour_of_day', 'count']
                         ).properties(height=300)
-                        st.altair_chart(chart, use_container_width=True)
+                        st.altair_chart(chart, width="stretch")
                 else:
                     st.info("Timestamp data required for heatmap.")
 
@@ -334,7 +313,7 @@ if df_raw is not None:
                             color=alt.Color(field="browser", type="nominal", scale=alt.Scale(scheme='category10')),
                             tooltip=['browser', 'count']
                         ).properties(height=300)
-                        st.altair_chart(chart, use_container_width=True)
+                        st.altair_chart(chart, width="stretch")
                 else:
                     st.info("User Agent data required for browser analysis.")
 
@@ -425,3 +404,10 @@ if df_raw is not None:
                 
             if not analysis_log:
                 st.warning("No specific analysis columns detected. Only raw data is available.")
+
+# --- System Monitor ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("System Monitor")
+process = psutil.Process(os.getpid())
+memory_usage = process.memory_info().rss / 1024 / 1024  # Convert to MB
+st.sidebar.metric("Memory Usage", f"{memory_usage:.2f} MB")
