@@ -154,6 +154,8 @@ if not uploaded_file:
     df_raw = pd.read_csv(io.StringIO(SAMPLE_CSV))
 else:
     df_raw = load_data(uploaded_file)
+    if df_raw is not None:
+        st.success("Data upload completed")
 
 # --- Main Execution ---
 
@@ -162,6 +164,7 @@ if df_raw is not None:
     df_clean = transform_data(df_raw)
     
     if df_clean is not None:
+        st.success("Analysis completed")
         # --- Date Filter ---
         st.sidebar.header("Filters")
         
