@@ -36,7 +36,7 @@ def load_data(file):
                 # Regex to extract fields (Supports Combined and Common Log Format)
                 # Made Referer and User Agent optional to support NASA CLF logs
                 log_pattern = re.compile(
-                    r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "\S+ (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) \S+(?: ".*?" "(?P<user_agent>.*?)")?'
+                    r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<method>\S+) (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) (?P<data_size>\S+)(?: ".*?" "(?P<user_agent>.*?)")?'
                 )
                 
                 data = []
@@ -78,6 +78,10 @@ def transform_data(df):
         # Ensure status_code is int
         df['status_code'] = pd.to_numeric(df['status_code'], errors='coerce').fillna(0).astype(int)
         
+        # Clean data_size (replace '-' with 0 and convert to numeric)
+        if 'data_size' in df.columns:
+            df['data_size'] = pd.to_numeric(df['data_size'], errors='coerce').fillna(0)
+        
         return df
     except Exception as e:
         st.error(f"Error during transformation: {e}")
@@ -111,6 +115,27 @@ if df_raw is not None:
     df_clean = transform_data(df_raw)
     
     if df_clean is not None:
+        # --- Date Filter ---
+        st.sidebar.header("Filters")
+        
+        if not df_clean.empty:
+            min_date = df_clean['timestamp'].min().date()
+            max_date = df_clean['timestamp'].max().date()
+            
+            date_range = st.sidebar.date_input(
+                "Select Date Range",
+                value=(min_date, max_date),
+                min_value=min_date,
+                max_value=max_date
+            )
+            
+            if len(date_range) == 2:
+                start_date, end_date = date_range
+                df_clean = df_clean[
+                    (df_clean['timestamp'].dt.date >= start_date) & 
+                    (df_clean['timestamp'].dt.date <= end_date)
+                ]
+
         # --- Dashboard Layout ---
         
         # Top Metrics
@@ -122,10 +147,16 @@ if df_raw is not None:
         error_requests = df_clean[df_clean['status_code'] >= 400]
         error_rate = (len(error_requests) / total_requests) * 100 if total_requests > 0 else 0
         
+        # Calculate total data transfer if available
+        if 'data_size' in df_clean.columns:
+            total_data_gb = df_clean['data_size'].sum() / (1024**3) # Convert bytes to GB
+        else:
+            total_data_gb = 0
+        
         col1.metric("Total Requests", total_requests)
         col2.metric("Unique Visitors", unique_visitors)
         col3.metric("Error Rate", f"{error_rate:.2f}%")
-        col4.metric("Total Errors", len(error_requests))
+        col4.metric("Data Transferred", f"{total_data_gb:.2f} GB")
         
         # Visualizations
         col_chart1, col_chart2 = st.columns(2)
@@ -140,6 +171,20 @@ if df_raw is not None:
             top_pages = df_clean['page_visited'].value_counts().head(5)
             st.bar_chart(top_pages)
             
+        # New Analysis Sections
+        col_chart3, col_chart4 = st.columns(2)
+        
+        with col_chart3:
+            st.subheader("Daily Traffic Trend")
+            if 'timestamp' in df_clean.columns:
+                daily_traffic = df_clean.set_index('timestamp').resample('D').size()
+                st.line_chart(daily_traffic)
+
+        with col_chart4:
+            st.subheader("Top 404 Errors (Missing Pages)")
+            missing_pages = df_clean[df_clean['status_code'] == 404]['page_visited'].value_counts().head(5)
+            st.bar_chart(missing_pages)
+
         st.subheader("HTTP Status Code Distribution")
         status_counts = df_clean['status_code'].value_counts()
         st.bar_chart(status_counts)
