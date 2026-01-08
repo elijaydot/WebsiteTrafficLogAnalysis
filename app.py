@@ -26,11 +26,11 @@ This application allows you to upload raw website traffic logs (CSV) and automat
 
 # --- ETL Functions ---
 
-@st.cache_data
 def load_data(file):
     """Extract: Load data from uploaded file."""
     if file is not None:
         try:
+            file.seek(0)
             # Handle CSV
             if file.name.endswith('.csv'):
                 return pd.read_csv(file)
@@ -39,7 +39,6 @@ def load_data(file):
             # Format: IP - - [Date] "Method Path Protocol" Status Size "Referer" "UserAgent"
             elif file.name.endswith('.log') or file.name.endswith('.txt'):
                 # Optimize: Read full content and use vectorized regex (much faster than looping)
-                file.seek(0)
                 content = file.getvalue().decode("utf-8", errors="replace")
 
                 # Regex to extract fields (Supports Combined and Common Log Format)
@@ -125,7 +124,6 @@ def transform_data(df):
         st.error(f"Error during transformation: {e}")
         return None
 
-@st.cache_data
 def convert_df(df):
     # Cache the conversion to prevent reloading on every interaction
     return df.to_csv(index=False).encode('utf-8')
@@ -166,8 +164,12 @@ if df_raw is not None:
     # Transform
     df_clean = transform_data(df_raw)
     
+    # Free up memory
+    del df_raw
+    gc.collect()
+    
     if df_clean is not None:
-        st.toast("Analysis completed!", icon="✅")
+        st.toast(f"Analysis completed! {len(df_clean):,} rows.", icon="✅")
         st.success(f"Analysis completed successfully on {len(df_clean):,} rows.")
         # --- Date Filter ---
         st.sidebar.header("Filters")
