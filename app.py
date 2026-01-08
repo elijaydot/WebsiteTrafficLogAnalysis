@@ -3,6 +3,10 @@ import pandas as pd
 import io
 import re
 import altair as alt
+try:
+    import vl_convert as vlc
+except ImportError:
+    vlc = None
 
 # Page Configuration
 st.set_page_config(
@@ -137,7 +141,12 @@ def transform_data(df):
 # --- Sidebar / Input ---
 
 st.sidebar.header("Data Input")
-uploaded_file = st.sidebar.file_uploader("Upload Log (CSV, LOG, TXT)", type=['csv', 'log', 'txt'])
+
+if st.sidebar.button("Reset Dashboard", type="primary"):
+    st.session_state.clear()
+    st.rerun()
+
+uploaded_file = st.sidebar.file_uploader("Upload Log (CSV, LOG, TXT)", type=['csv', 'log', 'txt'], key="file_uploader")
 
 # Sample Data Fallback
 SAMPLE_CSV = """timestamp,ip_address,page_visited,status_code,user_agent
@@ -153,6 +162,7 @@ if not uploaded_file:
     st.info("Awaiting upload. Using sample data for demonstration.")
     df_raw = pd.read_csv(io.StringIO(SAMPLE_CSV))
 else:
+    st.toast("File upload detected. Starting processing...", icon="⏳")
     df_raw = load_data(uploaded_file)
     if df_raw is not None:
         st.success("Data upload completed")
@@ -164,6 +174,7 @@ if df_raw is not None:
     df_clean = transform_data(df_raw)
     
     if df_clean is not None:
+        st.toast("Analysis completed!", icon="✅")
         st.success("Analysis completed")
         # --- Date Filter ---
         st.sidebar.header("Filters")
@@ -264,6 +275,11 @@ if df_raw is not None:
                             tooltip=['timestamp', 'count']
                         ).interactive()
                         st.altair_chart(chart, use_container_width=True)
+                    
+                    # Feature: Download Chart as Image
+                    if vlc:
+                        png_bytes = vlc.vegalite_to_png(chart.to_json(), scale=2)
+                        st.download_button("Download Chart Image (PNG)", png_bytes, "daily_traffic.png", "image/png", key="dl_daily")
 
             with col_chart4:
                 st.subheader("Top 404 Errors (Missing Pages)")
