@@ -2,6 +2,8 @@
 
 A robust Data Engineering project that demonstrates **ETL (Extract, Transform, Load)** processes on website traffic logs. This project includes a Jupyter Notebook for educational walkthroughs and a live interactive **Streamlit** dashboard for real-time log analysis.
 
+**🔴 Live App:** [https://websitetrafficloganalyzer.streamlit.app/](https://websitetrafficloganalyzer.streamlit.app/)
+
 ## Features
 
 *   **Multi-Format Support**: Upload standard **CSV** files or raw **Apache/Nginx Access Logs** (`.log`, `.txt`).
