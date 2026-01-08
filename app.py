@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+import re
 
 # Page Configuration
 st.set_page_config(
@@ -12,7 +13,7 @@ st.set_page_config(
 st.title("📊 Website Traffic Log Analysis")
 st.markdown("""
 This application allows you to upload raw website traffic logs (CSV) and automatically performs 
-**ETL (Extract, Transform, Load)** operations to visualize user behavior and identify issues.
+**ETL (Extract, Transform, Load)** operations to visualize user behavior and identify issues. Supports **CSV** and **Apache/Nginx Access Logs**.
 """)
 
 # --- ETL Functions ---
@@ -21,7 +22,40 @@ This application allows you to upload raw website traffic logs (CSV) and automat
 def load_data(file):
     """Extract: Load data from uploaded file."""
     if file is not None:
-        return pd.read_csv(file)
+        try:
+            # Handle CSV
+            if file.name.endswith('.csv'):
+                return pd.read_csv(file)
+            
+            # Handle Real-world Logs (Apache/Nginx Combined Format)
+            # Format: IP - - [Date] "Method Path Protocol" Status Size "Referer" "UserAgent"
+            elif file.name.endswith('.log') or file.name.endswith('.txt'):
+                content = file.getvalue().decode("utf-8")
+                
+                # Regex to extract fields
+                log_pattern = re.compile(
+                    r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "\S+ (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) \S+ ".*?" "(?P<user_agent>.*?)"'
+                )
+                
+                data = []
+                for line in content.splitlines():
+                    match = log_pattern.search(line)
+                    if match:
+                        row = match.groupdict()
+                        # Fix timestamp format for Pandas (replace first : with space)
+                        # From: 10/Oct/2000:13:55:36 +0000 -> 10/Oct/2000 13:55:36 +0000
+                        row['timestamp'] = row['timestamp'].replace(':', ' ', 1)
+                        data.append(row)
+                
+                if data:
+                    return pd.DataFrame(data)
+                else:
+                    st.error("No valid log lines found. Ensure format is Apache/Nginx Combined.")
+                    return None
+                    
+        except Exception as e:
+            st.error(f"Error processing file: {e}")
+            return None
     return None
 
 def transform_data(df):
@@ -50,7 +84,7 @@ def transform_data(df):
 # --- Sidebar / Input ---
 
 st.sidebar.header("Data Input")
-uploaded_file = st.sidebar.file_uploader("Upload Log CSV", type=['csv'])
+uploaded_file = st.sidebar.file_uploader("Upload Log (CSV, LOG, TXT)", type=['csv', 'log', 'txt'])
 
 # Sample Data Fallback
 SAMPLE_CSV = """timestamp,ip_address,page_visited,status_code,user_agent
