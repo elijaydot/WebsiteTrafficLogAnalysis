@@ -5,6 +5,7 @@ import re
 import altair as alt
 import os
 import psutil
+import gc
 try:
     import vl_convert as vlc
 except ImportError:
@@ -46,7 +47,14 @@ def load_data(file):
                 log_pattern = r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<method>\S+) (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) (?P<data_size>\S+)(?: "(?P<referer>.*?)" "(?P<user_agent>.*?)")?'
                 
                 # Load into Series and extract
-                df_raw = pd.Series(content.splitlines())
+                lines = content.splitlines()
+                del content
+                gc.collect()
+                
+                df_raw = pd.Series(lines)
+                del lines
+                gc.collect()
+                
                 data = df_raw.str.extract(log_pattern)
                 
                 if not data.empty:
@@ -160,7 +168,7 @@ if df_raw is not None:
     
     if df_clean is not None:
         st.toast("Analysis completed!", icon="✅")
-        # st.success("Analysis completed")
+        st.success(f"Analysis completed successfully on {len(df_clean):,} rows.")
         # --- Date Filter ---
         st.sidebar.header("Filters")
         
@@ -353,7 +361,9 @@ if df_raw is not None:
 
             # Detailed Data View
             with st.expander("View Detailed Data"):
-                st.dataframe(df_clean)
+                st.dataframe(df_clean.head(10000))
+                if len(df_clean) > 10000:
+                    st.caption("⚠️ Displaying only the first 10,000 rows for performance. Download the CSV for the full dataset.")
             
             # Load (Download)
             st.subheader("Export Data")
