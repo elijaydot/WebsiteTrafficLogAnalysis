@@ -104,6 +104,10 @@ if df_raw is not None:
             top_pages = df_clean['page_visited'].value_counts().head(5)
             st.bar_chart(top_pages)
             
+        st.subheader("HTTP Status Code Distribution")
+        status_counts = df_clean['status_code'].value_counts()
+        st.bar_chart(status_counts)
+
         # Detailed Data View
         with st.expander("View Detailed Data"):
             st.dataframe(df_clean)
