@@ -128,6 +128,16 @@ def convert_df(df):
     # Cache the conversion to prevent reloading on every interaction
     return df.to_csv(index=False).encode('utf-8')
 
+def add_download_button(chart, filename, key):
+    """Helper to add a download button for an Altair chart."""
+    if vlc:
+        try:
+            png_bytes = vlc.vegalite_to_png(chart.to_json(), scale=2)
+            st.download_button(label="💾", data=png_bytes, file_name=f"{filename}.png", mime="image/png", key=key, help="Download as PNG")
+        except Exception:
+            pass # Fail silently if conversion fails
+
+
 # --- Sidebar / Input ---
 
 st.sidebar.header("Data Input")
@@ -243,12 +253,20 @@ if df_raw is not None:
                             tooltip=['hour_of_day', 'count']
                         ).interactive()
                         st.altair_chart(chart, width="stretch")
+                        add_download_button(chart, "traffic_by_hour", "dl_traffic_hour")
                 
             with col_chart2:
                 st.subheader("Top 5 Pages")
                 if 'page_visited' in df_clean.columns:
-                    top_pages = df_clean['page_visited'].value_counts().head(5)
-                    st.bar_chart(top_pages)
+                    top_pages = df_clean['page_visited'].value_counts().head(5).reset_index()
+                    top_pages.columns = ['page_visited', 'count']
+                    chart = alt.Chart(top_pages).mark_bar().encode(
+                        x=alt.X('page_visited', sort='-y', title='Page'),
+                        y=alt.Y('count', title='Visits'),
+                        tooltip=['page_visited', 'count']
+                    ).interactive()
+                    st.altair_chart(chart, width="stretch")
+                    add_download_button(chart, "top_pages", "dl_top_pages")
                 else:
                     st.info("Page information not available.")
                 
@@ -270,17 +288,20 @@ if df_raw is not None:
                             tooltip=['timestamp', 'count']
                         ).interactive()
                         st.altair_chart(chart, width="stretch")
-                    
-                    # Feature: Download Chart as Image
-                    if vlc:
-                        png_bytes = vlc.vegalite_to_png(chart.to_json(), scale=2)
-                        st.download_button("Download Chart Image (PNG)", png_bytes, "daily_traffic.png", "image/png", key="dl_daily")
+                        add_download_button(chart, "daily_traffic", "dl_daily_traffic")
 
             with col_chart4:
                 st.subheader("Top 404 Errors (Missing Pages)")
                 if 'status_code' in df_clean.columns and 'page_visited' in df_clean.columns:
-                    missing_pages = df_clean[df_clean['status_code'] == 404]['page_visited'].value_counts().head(5)
-                    st.bar_chart(missing_pages)
+                    missing_pages = df_clean[df_clean['status_code'] == 404]['page_visited'].value_counts().head(5).reset_index()
+                    missing_pages.columns = ['page_visited', 'count']
+                    chart = alt.Chart(missing_pages).mark_bar(color='orange').encode(
+                        x=alt.X('page_visited', sort='-y', title='Page'),
+                        y=alt.Y('count', title='Errors'),
+                        tooltip=['page_visited', 'count']
+                    ).interactive()
+                    st.altair_chart(chart, width="stretch")
+                    add_download_button(chart, "missing_pages", "dl_missing_pages")
                 else:
                     st.info("404 Error analysis not available.")
 
@@ -308,6 +329,7 @@ if df_raw is not None:
                             tooltip=['day_of_week', 'hour_of_day', 'count']
                         ).properties(height=300)
                         st.altair_chart(chart, width="stretch")
+                        add_download_button(chart, "weekly_heatmap", "dl_heatmap")
                 else:
                     st.info("Timestamp data required for heatmap.")
 
@@ -324,6 +346,7 @@ if df_raw is not None:
                             tooltip=['browser', 'count']
                         ).properties(height=300)
                         st.altair_chart(chart, width="stretch")
+                        add_download_button(chart, "browser_dist", "dl_browser")
                 else:
                     st.info("User Agent data required for browser analysis.")
 
@@ -331,8 +354,15 @@ if df_raw is not None:
             st.subheader("Top Referrers")
             if 'referer' in df_clean.columns:
                 # Exclude direct traffic ('-')
-                top_referers = df_clean[df_clean['referer'] != '-']['referer'].value_counts().head(10)
-                st.bar_chart(top_referers)
+                top_referers = df_clean[df_clean['referer'] != '-']['referer'].value_counts().head(10).reset_index()
+                top_referers.columns = ['referer', 'count']
+                chart = alt.Chart(top_referers).mark_bar().encode(
+                    x=alt.X('count', title='Visits'),
+                    y=alt.Y('referer', sort='-x', title='Referrer'),
+                    tooltip=['referer', 'count']
+                ).interactive()
+                st.altair_chart(chart, width="stretch")
+                add_download_button(chart, "top_referers", "dl_referers")
 
             # Hotlinking Analysis
             st.subheader("Potential Hotlinking (Image Requests)")
@@ -345,9 +375,16 @@ if df_raw is not None:
                 
                 if not image_requests.empty:
                     # Exclude direct traffic ('-') to find potential hotlinkers
-                    hotlink_referers = image_requests[image_requests['referer'] != '-']['referer'].value_counts().head(10)
+                    hotlink_referers = image_requests[image_requests['referer'] != '-']['referer'].value_counts().head(10).reset_index()
+                    hotlink_referers.columns = ['referer', 'count']
                     if not hotlink_referers.empty:
-                        st.bar_chart(hotlink_referers)
+                        chart = alt.Chart(hotlink_referers).mark_bar(color='red').encode(
+                            x=alt.X('count', title='Requests'),
+                            y=alt.Y('referer', sort='-x', title='Referrer'),
+                            tooltip=['referer', 'count']
+                        ).interactive()
+                        st.altair_chart(chart, width="stretch")
+                        add_download_button(chart, "hotlinking", "dl_hotlink")
                         st.caption("Domains listed here (other than your own) might be hotlinking your images.")
                     else:
                         st.info("No external referers found for image requests.")
@@ -356,8 +393,15 @@ if df_raw is not None:
 
             st.subheader("HTTP Status Code Distribution")
             if 'status_code' in df_clean.columns:
-                status_counts = df_clean['status_code'].value_counts()
-                st.bar_chart(status_counts)
+                status_counts = df_clean['status_code'].value_counts().reset_index()
+                status_counts.columns = ['status_code', 'count']
+                chart = alt.Chart(status_counts).mark_bar().encode(
+                    x=alt.X('status_code:O', title='Status Code'),
+                    y=alt.Y('count', title='Count'),
+                    tooltip=['status_code', 'count']
+                ).interactive()
+                st.altair_chart(chart, width="stretch")
+                add_download_button(chart, "status_codes", "dl_status_codes")
             else:
                 st.info("Status code information not available.")
 

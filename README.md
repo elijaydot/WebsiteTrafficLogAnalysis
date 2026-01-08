@@ -20,6 +20,15 @@ A robust Data Engineering project that demonstrates **ETL (Extract, Transform, L
     *   **File Statistics**: View row and column counts immediately after upload.
     *   **Dynamic Analysis Report**: Automatically generates a summary explaining which analyses were performed based on the detected columns (e.g., "Detected `status_code`, so Error Rate analysis was performed").
 
+## 📸 Screenshots
+
+### 1. Main Dashboard
+![Main Dashboard Tab](images/dashboard.png)
+
+### 2. Data Overview
+![Data Overview Tab](images/data_overview.png)
+
+
 ## Project Structure
 
 *   `app.py`: The main entry point for the Streamlit web application. Contains the logic for the dashboard and log parsing.
