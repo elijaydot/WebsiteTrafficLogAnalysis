@@ -36,7 +36,7 @@ def load_data(file):
                 # Regex to extract fields (Supports Combined and Common Log Format)
                 # Made Referer and User Agent optional to support NASA CLF logs
                 log_pattern = re.compile(
-                    r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<method>\S+) (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) (?P<data_size>\S+)(?: ".*?" "(?P<user_agent>.*?)")?'
+                    r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<method>\S+) (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) (?P<data_size>\S+)(?: "(?P<referer>.*?)" "(?P<user_agent>.*?)")?'
                 )
                 
                 data = []
@@ -81,6 +81,10 @@ def transform_data(df):
         # Clean data_size (replace '-' with 0 and convert to numeric)
         if 'data_size' in df.columns:
             df['data_size'] = pd.to_numeric(df['data_size'], errors='coerce').fillna(0)
+        
+        # Clean referer
+        if 'referer' in df.columns:
+            df['referer'] = df['referer'].fillna('-')
         
         return df
     except Exception as e:
@@ -184,6 +188,33 @@ if df_raw is not None:
             st.subheader("Top 404 Errors (Missing Pages)")
             missing_pages = df_clean[df_clean['status_code'] == 404]['page_visited'].value_counts().head(5)
             st.bar_chart(missing_pages)
+
+        # Referer Analysis
+        st.subheader("Top Referrers")
+        if 'referer' in df_clean.columns:
+            # Exclude direct traffic ('-')
+            top_referers = df_clean[df_clean['referer'] != '-']['referer'].value_counts().head(10)
+            st.bar_chart(top_referers)
+
+        # Hotlinking Analysis
+        st.subheader("Potential Hotlinking (Image Requests)")
+        if 'referer' in df_clean.columns:
+            # Identify requests for image files
+            image_extensions = r'\.(?:png|jpg|jpeg|gif|svg|ico|webp)(?:\?|$)'
+            image_requests = df_clean[
+                df_clean['page_visited'].str.contains(image_extensions, case=False, regex=True)
+            ]
+            
+            if not image_requests.empty:
+                # Exclude direct traffic ('-') to find potential hotlinkers
+                hotlink_referers = image_requests[image_requests['referer'] != '-']['referer'].value_counts().head(10)
+                if not hotlink_referers.empty:
+                    st.bar_chart(hotlink_referers)
+                    st.caption("Domains listed here (other than your own) might be hotlinking your images.")
+                else:
+                    st.info("No external referers found for image requests.")
+            else:
+                st.info("No image requests detected.")
 
         st.subheader("HTTP Status Code Distribution")
         status_counts = df_clean['status_code'].value_counts()
