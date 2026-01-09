@@ -40,32 +40,39 @@ A robust Data Engineering project that demonstrates **ETL (Extract, Transform, L
 ## 🏗️ Architecture
 
 ```mermaid
-graph TD
-    User([User]) -->|Upload Log/CSV| UI[Streamlit UI]
-    
-    subgraph "Security Layer"
-        UI -->|Check Rate Limit| RL[Rate Limiter]
-        RL -->|Validate File| IS[Input Sanitization]
+%% Theme: Clean horizontal layout with grouped layers
+graph LR
+    %% User Input
+    User([👤 User]) -->|Upload Log/CSV| UI[🖥️ Streamlit UI]
+
+    %% Security Layer
+    subgraph Security Layer
+        UI -->|Check Rate Limit| RL[⏱️ Rate Limiter]
+        RL -->|Validate File| IS[🧼 Input Sanitization]
     end
-    
-    subgraph "ETL Pipeline"
-        IS -->|Read Chunks| Ext[Extract: Chunked Loader]
-        Ext -->|Vectorized Regex| Trans[Transform: Pandas]
-        Trans -->|Hash IPs| GDPR[GDPR Anonymization]
+
+    %% ETL Pipeline
+    subgraph ETL Pipeline
+        IS -->|Read Chunks| Ext[📦 Extract: Chunked Loader]
+        Ext -->|Vectorized Regex| Trans[🧮 Transform: Pandas]
+        Trans -->|Hash IPs| GDPR[🕵️ GDPR Anonymization]
     end
-    
-    subgraph "Performance Layer"
-        GDPR -->|Garbage Collect| Mem[Memory Manager]
-        Mem -->|Limit Rows| Sample[Data Sampler]
+
+    %% Performance Layer
+    subgraph Performance Layer
+        GDPR -->|Garbage Collect| Mem[🧠 Memory Manager]
+        Mem -->|Limit Rows| Sample[📊 Data Sampler]
     end
-    
-    subgraph "Analysis & Visualization"
-        Trans -->|Calculate| Metrics[Metrics & Anomalies]
-        Metrics -->|Render| Dash[Dashboard Charts]
-        Sample -->|Display| Table[Data Preview]
+
+    %% Analysis & Visualization
+    subgraph Analysis & Visualization
+        Trans -->|Calculate| Metrics[📐 Metrics & Anomalies]
+        Metrics -->|Render| Dash[📊 Dashboard Charts]
+        Sample -->|Display| Table[📋 Data Preview]
     end
-    
-    Dash -->|Download| Export[Export PNG/CSV]
+
+    Dash -->|Download| Export[📁 Export PNG/CSV]
+
 ```
 
 ## Screenshots
