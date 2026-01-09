@@ -14,6 +14,18 @@ try:
 except ImportError:
     vlc = None
 
+# --- Configuration Management ---
+class AppConfig:
+    """Central configuration for the application."""
+    CHUNK_SIZE = 10000
+    MAX_PREVIEW_ROWS = 10000
+    BINARY_CHECK_BYTES = 4096
+    RATE_LIMIT_SECONDS = 1.0
+    IP_HASH_LENGTH = 12
+    PNG_SCALE = 2
+    # Regex for Apache/Nginx Combined Log Format
+    LOG_PATTERN = r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<method>\S+) (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) (?P<data_size>\S+)(?: "(?P<referer>.*?)" "(?P<user_agent>.*?)")?'
+
 # Page Configuration
 st.set_page_config(
     page_title="Website Traffic Analysis",
@@ -31,7 +43,7 @@ This application allows you to upload raw website traffic logs (CSV) and automat
 if 'last_request_time' not in st.session_state:
     st.session_state.last_request_time = 0
 
-if time.time() - st.session_state.last_request_time < 1.0:
+if time.time() - st.session_state.last_request_time < AppConfig.RATE_LIMIT_SECONDS:
     st.warning("⚠️ Rate limit exceeded. Please wait a moment.")
     st.stop()
 st.session_state.last_request_time = time.time()
@@ -44,7 +56,7 @@ def load_data(file):
         try:
             file.seek(0)
             # Security: Basic Input Sanitization (Check for binary files)
-            if b'\0' in file.read(4096):
+            if b'\0' in file.read(AppConfig.BINARY_CHECK_BYTES):
                 st.error("Invalid file format: Binary content detected.")
                 return None
             file.seek(0)
@@ -52,7 +64,7 @@ def load_data(file):
             if file.name.endswith('.csv'):
                 # Use chunking to handle large CSVs more gracefully during load
                 # Although we concat immediately, this avoids some internal buffering issues with massive files
-                chunks = pd.read_csv(file, chunksize=10000)
+                chunks = pd.read_csv(file, chunksize=AppConfig.CHUNK_SIZE)
                 return pd.concat(chunks, ignore_index=True)
             
             # Handle Real-world Logs (Apache/Nginx Combined Format)
@@ -63,13 +75,13 @@ def load_data(file):
 
                 # Regex to extract fields (Supports Combined and Common Log Format)
                 # Made Referer and User Agent optional to support NASA CLF logs
-                log_pattern = r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<method>\S+) (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) (?P<data_size>\S+)(?: "(?P<referer>.*?)" "(?P<user_agent>.*?)")?'
+                log_pattern = AppConfig.LOG_PATTERN
                 
                 chunks = []
                 text_stream = io.TextIOWrapper(file, encoding='utf-8', errors='replace')
                 
                 while True:
-                    lines = list(islice(text_stream, 10000))
+                    lines = list(islice(text_stream, AppConfig.CHUNK_SIZE))
                     if not lines:
                         break
                     
@@ -104,7 +116,7 @@ def transform_data(df, anonymize_ip=False):
         # Security: IP Anonymization (GDPR)
         if anonymize_ip and 'ip_address' in df.columns:
             df['ip_address'] = df['ip_address'].astype(str).apply(
-                lambda x: hashlib.sha256(x.encode()).hexdigest()[:12]
+                lambda x: hashlib.sha256(x.encode()).hexdigest()[:AppConfig.IP_HASH_LENGTH]
             )
 
         # Map 'minute' to 'timestamp' if present (handling aggregated datasets)
@@ -169,7 +181,7 @@ def add_download_button(chart, filename, key):
     """Helper to add a download button for an Altair chart."""
     if vlc:
         try:
-            png_bytes = vlc.vegalite_to_png(chart.to_json(), scale=2)
+            png_bytes = vlc.vegalite_to_png(chart.to_json(), scale=AppConfig.PNG_SCALE)
             st.download_button(label="💾", data=png_bytes, file_name=f"{filename}.png", mime="image/png", key=key, help="Download as PNG")
         except Exception:
             pass # Fail silently if conversion fails
@@ -504,9 +516,9 @@ if df_raw is not None:
 
             # Detailed Data View
             with st.expander("View Detailed Data"):
-                st.dataframe(df_clean.head(10000))
-                if len(df_clean) > 10000:
-                    st.caption("⚠️ Displaying only the first 10,000 rows for performance. Download the CSV for the full dataset.")
+                st.dataframe(df_clean.head(AppConfig.MAX_PREVIEW_ROWS))
+                if len(df_clean) > AppConfig.MAX_PREVIEW_ROWS:
+                    st.caption(f"⚠️ Displaying only the first {AppConfig.MAX_PREVIEW_ROWS:,} rows for performance. Download the CSV for the full dataset.")
             
             # Load (Download)
             st.subheader("Export Data")
