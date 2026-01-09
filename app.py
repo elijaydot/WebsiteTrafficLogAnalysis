@@ -102,6 +102,13 @@ def transform_data(df):
         # Ensure status_code is int
         if 'status_code' in df.columns:
             df['status_code'] = pd.to_numeric(df['status_code'], errors='coerce').fillna(0).astype(int)
+            
+            # Categorize Status Codes for easier analysis
+            df['status_category'] = 'Other'
+            df.loc[(df['status_code'] >= 200) & (df['status_code'] < 300), 'status_category'] = 'Success (2xx)'
+            df.loc[(df['status_code'] >= 300) & (df['status_code'] < 400), 'status_category'] = 'Redirect (3xx)'
+            df.loc[(df['status_code'] >= 400) & (df['status_code'] < 500), 'status_category'] = 'Client Error (4xx)'
+            df.loc[(df['status_code'] >= 500) & (df['status_code'] < 600), 'status_category'] = 'Server Error (5xx)'
         
         # Clean data_size (replace '-' with 0 and convert to numeric)
         if 'data_size' in df.columns:
@@ -235,7 +242,7 @@ if df_raw is not None:
         with tab1:
             # Top Metrics
             st.subheader("Key Metrics")
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
             
             total_requests = len(df_clean)
             if 'count' in df_clean.columns:
@@ -243,10 +250,13 @@ if df_raw is not None:
 
             unique_visitors = df_clean['ip_address'].nunique() if 'ip_address' in df_clean.columns else 0
             
-            error_rate = 0
+            client_error_rate = 0
+            server_error_rate = 0
             if 'status_code' in df_clean.columns:
-                error_requests = df_clean[df_clean['status_code'] >= 400]
-                error_rate = (len(error_requests) / len(df_clean)) * 100 if len(df_clean) > 0 else 0
+                client_errors = df_clean[(df_clean['status_code'] >= 400) & (df_clean['status_code'] < 500)]
+                server_errors = df_clean[(df_clean['status_code'] >= 500) & (df_clean['status_code'] < 600)]
+                client_error_rate = (len(client_errors) / len(df_clean)) * 100 if len(df_clean) > 0 else 0
+                server_error_rate = (len(server_errors) / len(df_clean)) * 100 if len(df_clean) > 0 else 0
             
             # Calculate total data transfer if available
             if 'data_size' in df_clean.columns:
@@ -256,8 +266,9 @@ if df_raw is not None:
             
             col1.metric("Total Requests", total_requests)
             col2.metric("Unique Visitors", unique_visitors if unique_visitors > 0 else "N/A")
-            col3.metric("Error Rate", f"{error_rate:.2f}%")
-            col4.metric("Data Transferred", f"{total_data_gb:.2f} GB")
+            col3.metric("4xx Errors", f"{client_error_rate:.2f}%")
+            col4.metric("5xx Errors", f"{server_error_rate:.2f}%")
+            col5.metric("Data Transferred", f"{total_data_gb:.2f} GB")
             
             # Visualizations
             col_chart1, col_chart2 = st.columns(2)
@@ -330,6 +341,32 @@ if df_raw is not None:
                     add_download_button(chart, "missing_pages", "dl_missing_pages")
                 else:
                     st.info("404 Error analysis not available.")
+
+            # --- Anomaly Detection ---
+            st.markdown("---")
+            st.subheader("🚨 Anomaly Detection")
+            if 'hour_of_day' in df_clean.columns:
+                # Calculate hourly counts
+                if 'count' in df_clean.columns:
+                    hourly_counts = df_clean.groupby('hour_of_day')['count'].sum()
+                else:
+                    hourly_counts = df_clean['hour_of_day'].value_counts().sort_index()
+                
+                if not hourly_counts.empty:
+                    mean_traffic = hourly_counts.mean()
+                    std_traffic = hourly_counts.std()
+                    # Flag hours with traffic > Mean + 2 Standard Deviations
+                    threshold = mean_traffic + (2 * std_traffic) 
+                    
+                    anomalies = hourly_counts[hourly_counts > threshold]
+                    
+                    if not anomalies.empty:
+                        st.warning(f"⚠️ High traffic anomalies detected at hours: {', '.join(map(str, anomalies.index.tolist()))}")
+                        st.caption(f"These hours exceeded the threshold of {int(threshold)} requests (Mean + 2σ).")
+                    else:
+                        st.success("✅ No significant traffic anomalies detected (all traffic within normal range).")
+            else:
+                st.info("Hourly data required for anomaly detection.")
 
             # --- Advanced Insights (New Charts) ---
             st.markdown("---")
@@ -421,9 +458,20 @@ if df_raw is not None:
             if 'status_code' in df_clean.columns:
                 status_counts = df_clean['status_code'].value_counts().reset_index()
                 status_counts.columns = ['status_code', 'count']
+                
+                # Add category for coloring
+                def get_cat(code):
+                    if 200 <= code < 300: return 'Success (2xx)'
+                    if 300 <= code < 400: return 'Redirect (3xx)'
+                    if 400 <= code < 500: return 'Client Error (4xx)'
+                    if 500 <= code < 600: return 'Server Error (5xx)'
+                    return 'Other'
+                status_counts['category'] = status_counts['status_code'].apply(get_cat)
+
                 chart = alt.Chart(status_counts).mark_bar().encode(
                     x=alt.X('status_code:O', title='Status Code'),
                     y=alt.Y('count', title='Count'),
+                    color=alt.Color('category', scale=alt.Scale(domain=['Success (2xx)', 'Redirect (3xx)', 'Client Error (4xx)', 'Server Error (5xx)', 'Other'], range=['green', 'blue', 'orange', 'red', 'gray']), title='Category'),
                     tooltip=['status_code', 'count']
                 ).interactive()
                 st.altair_chart(chart, width="stretch")
