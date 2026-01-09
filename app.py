@@ -7,6 +7,8 @@ import os
 import psutil
 import gc
 from itertools import islice
+import hashlib
+import time
 try:
     import vl_convert as vlc
 except ImportError:
@@ -25,12 +27,26 @@ This application allows you to upload raw website traffic logs (CSV) and automat
 **ETL (Extract, Transform, Load)** operations to visualize user behavior and identify issues. Supports **CSV** and **Apache/Nginx Access Logs**.
 """)
 
+# --- Security: Rate Limiting ---
+if 'last_request_time' not in st.session_state:
+    st.session_state.last_request_time = 0
+
+if time.time() - st.session_state.last_request_time < 1.0:
+    st.warning("⚠️ Rate limit exceeded. Please wait a moment.")
+    st.stop()
+st.session_state.last_request_time = time.time()
+
 # --- ETL Functions ---
 
 def load_data(file):
     """Extract: Load data from uploaded file."""
     if file is not None:
         try:
+            file.seek(0)
+            # Security: Basic Input Sanitization (Check for binary files)
+            if b'\0' in file.read(4096):
+                st.error("Invalid file format: Binary content detected.")
+                return None
             file.seek(0)
             # Handle CSV
             if file.name.endswith('.csv'):
@@ -79,12 +95,18 @@ def load_data(file):
             return None
     return None
 
-def transform_data(df):
+def transform_data(df, anonymize_ip=False):
     """Transform: Clean and feature engineer the data."""
     try:
         # Copy to avoid SettingWithCopy warnings
         df = df.copy()
         
+        # Security: IP Anonymization (GDPR)
+        if anonymize_ip and 'ip_address' in df.columns:
+            df['ip_address'] = df['ip_address'].astype(str).apply(
+                lambda x: hashlib.sha256(x.encode()).hexdigest()[:12]
+            )
+
         # Map 'minute' to 'timestamp' if present (handling aggregated datasets)
         if 'minute' in df.columns:
             df = df.rename(columns={'minute': 'timestamp'})
@@ -167,6 +189,7 @@ if st.sidebar.button("Reset Dashboard", type="primary"):
     st.session_state.clear()
     st.rerun()
 
+anonymize = st.sidebar.checkbox("Anonymize IPs (GDPR)", value=True, help="Hash IP addresses to protect user privacy.")
 uploaded_file = st.sidebar.file_uploader("Upload Log (CSV, LOG, TXT)", type=['csv', 'log', 'txt'], key="file_uploader")
 
 # Sample Data Fallback
@@ -205,7 +228,7 @@ if df_raw is not None:
         st.stop()
 
     # Transform
-    df_clean = transform_data(df_raw)
+    df_clean = transform_data(df_raw, anonymize)
     
     # Free up memory
     del df_raw
