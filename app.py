@@ -145,6 +145,12 @@ def add_download_button(chart, filename, key):
         except Exception:
             pass # Fail silently if conversion fails
 
+def validate_data(df, required_cols):
+    """Validate that the dataframe contains the required columns."""
+    missing = set(required_cols) - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing columns: {missing}")
+    return True
 
 # --- Sidebar / Input ---
 
@@ -179,6 +185,18 @@ else:
 # --- Main Execution ---
 
 if df_raw is not None:
+    # Data Validation
+    try:
+        # Ensure we have at least a time column for analysis
+        # We check for 'minute' (LSTM dataset) or 'timestamp' (Standard logs/CSV)
+        if 'minute' in df_raw.columns:
+            validate_data(df_raw, ['minute'])
+        else:
+            validate_data(df_raw, ['timestamp'])
+    except ValueError as e:
+        st.error(f"Validation Failed: {e}")
+        st.stop()
+
     # Transform
     df_clean = transform_data(df_raw)
     
@@ -442,6 +460,14 @@ if df_raw is not None:
             st.subheader("Column Structure")
             dtypes_df = pd.DataFrame(df_clean.dtypes, columns=['Data Type']).astype(str)
             st.dataframe(dtypes_df)
+            
+            # Data Quality Metrics
+            st.subheader("Data Quality")
+            if not df_clean.empty:
+                null_counts = df_clean.isnull().sum()
+                null_pct = (null_counts / len(df_clean)) * 100
+                quality_df = pd.DataFrame({'Null Count': null_counts, 'Null Percentage (%)': null_pct})
+                st.dataframe(quality_df.style.format({'Null Percentage (%)': '{:.2f}'}))
             
             # Analysis Logic Description
             st.subheader("Analysis Logic Applied")
