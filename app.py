@@ -6,6 +6,7 @@ import altair as alt
 import os
 import psutil
 import gc
+from itertools import islice
 try:
     import vl_convert as vlc
 except ImportError:
@@ -33,32 +34,39 @@ def load_data(file):
             file.seek(0)
             # Handle CSV
             if file.name.endswith('.csv'):
-                return pd.read_csv(file)
+                # Use chunking to handle large CSVs more gracefully during load
+                # Although we concat immediately, this avoids some internal buffering issues with massive files
+                chunks = pd.read_csv(file, chunksize=10000)
+                return pd.concat(chunks, ignore_index=True)
             
             # Handle Real-world Logs (Apache/Nginx Combined Format)
             # Format: IP - - [Date] "Method Path Protocol" Status Size "Referer" "UserAgent"
             elif file.name.endswith('.log') or file.name.endswith('.txt'):
-                # Optimize: Read full content and use vectorized regex (much faster than looping)
-                content = file.getvalue().decode("utf-8", errors="replace")
+                # Optimize: Process file in chunks to avoid loading full content into memory
+                # This combines the speed of vectorized regex with the memory efficiency of streaming
 
                 # Regex to extract fields (Supports Combined and Common Log Format)
                 # Made Referer and User Agent optional to support NASA CLF logs
                 log_pattern = r'(?P<ip_address>\S+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<method>\S+) (?P<page_visited>\S+) \S+" (?P<status_code>\d{3}) (?P<data_size>\S+)(?: "(?P<referer>.*?)" "(?P<user_agent>.*?)")?'
                 
-                # Load into Series and extract
-                lines = content.splitlines()
-                del content
-                gc.collect()
+                chunks = []
+                text_stream = io.TextIOWrapper(file, encoding='utf-8', errors='replace')
                 
-                df_raw = pd.Series(lines)
-                del lines
-                gc.collect()
+                while True:
+                    lines = list(islice(text_stream, 10000))
+                    if not lines:
+                        break
+                    
+                    df_chunk = pd.Series(lines)
+                    extracted = df_chunk.str.extract(log_pattern)
+                    extracted = extracted.dropna(how='all')
+                    if not extracted.empty:
+                        chunks.append(extracted)
                 
-                data = df_raw.str.extract(log_pattern)
+                text_stream.detach()
                 
-                if not data.empty:
-                    # Drop rows that didn't match (all NaNs)
-                    data = data.dropna(how='all')
+                if chunks:
+                    data = pd.concat(chunks, ignore_index=True)
                     # Fix timestamp format for Pandas
                     data['timestamp'] = data['timestamp'].str.replace(':', ' ', n=1)
                     return data
