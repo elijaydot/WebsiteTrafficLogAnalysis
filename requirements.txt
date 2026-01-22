@@ -2,3 +2,10 @@ pandas
 streamlit
 vl-convert-python
 psutil
+altair<6
+matplotlib
+numpy
+pandera
+plotly
+pyarrow
+streamlit>=1.40.0
